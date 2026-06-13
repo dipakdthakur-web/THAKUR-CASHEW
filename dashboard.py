@@ -1,86 +1,100 @@
 import streamlit as st
 import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
 
-# १. पेजाची रचना
+# १. पेजाची रचना आणि सेटिंग्स
 st.set_page_config(
-    page_title="ठाकूर काश्यूज डॅशबोर्ड", 
-    page_icon="🏭", 
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="ठाकूर कॅश्यू बिझनेस डॅशबोर्ड",
+    page_icon="📊",
+    layout="wide"
 )
 
-# गुगल शीटचा आयडी
-SHEET_ID = "1c_Hf3pBf27iZbJ4cFvwPCny2Tvt6jryKqL0pSpP-9q0"
+# २. गुगल शीटचा आयडी
+SHEET_ID = "1c_Hf3pBf27izBj4cFvwPCny2Tvt6jryKqU"
 
-# २. डाव्या बाजूचा नेव्हिगेशन मेनू (Sidebar)
-st.sidebar.image("https://img.icons8.com/fluent/96/000000/factory.png", width=70)
-st.sidebar.title("🗂️ बिझनेस मेमरी")
+# ३. गुगल शीट कनेक्ट करण्यासाठीचे फंक्शन (सर्व्हिस अकाउंट क्रेडेंशियल्ससह)
+@st.cache_resource
+def get_gspread_client():
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    # Streamlit Secrets मधून क्रेडेंशियल्स लोड करणे
+    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+    return gspread.authorize(creds)
+
+# ४. डेटा लोड करण्याचे मुख्य फंक्शन (इंडेक्स बदलला की डेटा ऑटोमॅटिक बदलतो)
+@st.cache_data(ttl=300)  # ५ मिनिटांनी डेटा ऑटोमॅटिक रिफ्रेश होईल
+def load_sheet_data(sheet_index):
+    try:
+        client = get_gspread_client()
+        spreadsheet = client.open_by_key(SHEET_ID)
+        worksheet = spreadsheet.get_worksheet(sheet_index)
+        
+        # सर्व डेटा गोळा करून पांडाज डेटाफ्रेममध्ये रूपांतरित करणे
+        data = worksheet.get_all_records()
+        if not data:
+            return pd.DataFrame()
+        return pd.DataFrame(data)
+    except Exception as e:
+        st.error(f"डेटा लोड करताना त्रुटी आली: {e}")
+        return pd.DataFrame()
+
+# ५. डाव्या बाजूचा नेव्हिगेशन मेनू (Sidebar)
+st.sidebar.image("https://img.icons8.com/fluency/96/dashboard.png", width=80)
+st.sidebar.title("📁 बिझネス मेमरी")
 st.sidebar.write("---")
 st.sidebar.subheader("📋 सर्व १७ लाईव्ह रिपोर्ट्स")
 
-# सुधारित नावांसह सर्व १७ शीट्सचा अनुक्रमांक (0, 1, 2...)
+# ६. तुमच्या अचूक १७ शीट्सच्या नावांची आणि इंडेक्सची डिक्शनरी (० ते १६)
 sheet_by_index = {
-    "1️⃣ RCN Purchase Details": 0,
-    "2️⃣ Finish Goods Purchase": 1,
-    "3️⃣ Processing Quantity": 2,
-    "4️⃣ Boiling Report": 3,
-    "5️⃣ Cutting Report": 4,
-    "6️⃣ Outward Sale": 5,
-    "7️⃣ Borma Report": 6,
-    "8️⃣ Before After Borma Report": 7,
-    "9️⃣ Inward Job Work": 8,
-    "🔟 Moisture Report": 9,
-    "1️⃣1️⃣ Everest To Indian Report": 10,  # येथे बदल केला आहे
-    "1️⃣2️⃣ Kudal To Math Report": 11,      # येथे बदल केला आहे
-    "1️⃣3️⃣ Old Lot Stock": 12,
-    "1️⃣4️⃣ Final Bucket Stock List": 13,
-    "1️⃣5️⃣ P&L Profit And Loss": 14,
-    "1️⃣6️⃣ Account Sales": 15,
-    "1️⃣7️⃣ Cash Sales": 16
+    "1. RCN Purchase Details": 0,
+    "2. Finish Goods Purchase": 1,
+    "3. Processing Quantity": 2,
+    "4. Boiling Report": 3,
+    "5. Cutting Report": 4,
+    "6. Outward Sale": 5,
+    "7. Borma Report": 6,
+    "8. Before After Borma Report": 7,
+    "9. Inward Job Work": 8,
+    "10. Moisture Report": 9,
+    "11. Everest To Indian Report": 10,
+    "12. Kudal To Math Report": 11,
+    "13. Old Lot Stock": 12,
+    "14. Final Bucket Stock List": 13,
+    "15. P&L Profit And Loss": 14,
+    "16. Account Sales": 15,
+    "17. Cash Sales": 16
 }
 
-selected_report = st.sidebar.radio("पाहण्यासाठी रिपोर्ट निवडा:", list(sheet_by_index.keys()))
-st.sidebar.write("---")
+# ७. युझरला ड्रॉपडाऊन दाखवणे
+selected_sheet_name = st.sidebar.selectbox(
+    "कृपया रिपोर्ट निवडा:", 
+    list(sheet_by_index.keys())
+)
 
-# ३. मुख्य स्क्रीन
-st.title("🏭 ठाकूर काश्यूज (Thakur Cashews)")
-st.subheader("AI Business Legacy & Decision Support System")
-st.write(f"📂 **चालू अहवाल:** `{selected_report}`")
+# ८. निवडलेल्या रिपोर्टचा इंडेक्स नंबर मिळवणे
+selected_index = sheet_by_index[selected_sheet_name]
+
+# ९. मुख्य स्क्रीनवर रिपोर्टचे नाव दाखवणे
+st.title(f"📊 {selected_sheet_name}")
+st.write(f"खाली तुम्हाला `{selected_sheet_name}` चा लाईव्ह डेटा दिसत आहे.")
 st.write("---")
 
-# ४. क्रमांकावरून थेट गुगल शीट लोड करण्याचे फंक्शन
-@st.cache_data(ttl=60)
-def load_data_by_index(sheet_index):
-    try:
-        # थेट विशिष्ट शीट नंबरवरून (Gid) डेटा उघडण्याची सर्वात वेगवान लिंक
-        direct_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&gid={sheet_index}"
-        df = pd.read_csv(direct_url)
-        df = df.dropna(how='all')
-        return df
-    except Exception as e:
-        return None
+# डेटा लोड करण्यासाठी फंक्शन कॉल करणे
+with st.spinner('गुगल शीटवरून लाईव्ह डेटा आणत आहे, कृपया प्रतीक्षा करा...'):
+    df = load_sheet_data(selected_index)
 
-target_index = sheet_by_index[selected_report]
-
-with st.spinner("गुगल शीटमधून नंबरनुसार लाईव्ह डेटा लोड होत आहे..."):
-    df_data = load_data_by_index(target_index)
-
-# ५. स्क्रीनवर डेटा आणि फॅमिलीसाठी गाईडलाईन्स दाखवणे
-if df_data is not None and not df_data.empty:
-    st.success(f"📊 `{selected_report}` चा डेटा यशस्वीरित्या लोड झाला आहे.")
-    st.dataframe(df_data, use_container_width=True, hide_index=True)
+# १०. डेटा स्क्रीनवर सुंदर टेबल स्वरूपात दाखवणे
+if not df.empty:
+    # डेटा सर्च आणि फिल्टर करण्यासाठी आधुनिक डेटा ग्रिड
+    st.dataframe(df, use_container_width=True)
     
+    # बेसिक आकडेवारी (Metrics)
     st.write("---")
-    st.markdown("### 🔑 निर्णय आणि जोखीम व्यवस्थापन (Decision Support Note)")
-    
-    if "Purchase" in selected_report:
-        st.info("💡 **खरेदी विश्लेषण:** कच्च्या मालाच्या (RCN) खरेदी किमती आणि स्टॉकची उपलब्धता तपासूनच पुढील लॉटचे पेमेंट प्लॅनिंग करावे.")
-    elif "Stock" in selected_report:
-        st.warning("⚠️ **स्टॉक अलर्ट:** जुन्या लॉटचा स्टॉक (Old Lot Stock) किंवा फायनल बकेट स्टॉक आधी रिकामा करण्यावर भर द्यावा.")
-    elif "Sale" in selected_report or "P&L" in selected_report:
-        st.success("💰 **नफा आणि आर्थिक स्थिती:** हा डेटा थेट नफा-तोटा आणि कॅश充 फ्लोशी संबंधित आहे. येणे बाकी आणि रोख विक्रीचा ताळमेळ तपासावा.")
-    else:
-        st.info("⚙️ **प्रोसेसिंग आणि गुणवत्ता:** बॉईलिंग, कटिंग, मॉइश्चर आणि बोर्मा रिपोर्टमधील रिकव्हरी टक्केवारीवर बारीक लक्ष ठेवावे.")
+    col1, col2 = st.columns(2)
+    col1.metric(label="एकूण नोंदी (Rows)", value=len(df))
+    col2.metric(label="एकूण कॉलम्स (Columns)", value=len(df.columns))
 else:
-    st.error(f"❌ शीट क्रमांक `{target_index + 1}` मधून डेटा लोड होऊ शकला नाही.")
-    st.info("💡 **टीप:** गुगल शीट 'Anyone with the link can view' या設定वर असल्याची खात्री करा.")
+    st.info("या शीटमध्ये सध्या कोणताही डेटा उपलब्ध नाही किंवा हे शीट रिकामे आहे.")
